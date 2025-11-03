@@ -224,24 +224,53 @@ func TestE2E_Timeout(t *testing.T) {
 		Level: slog.LevelError,
 	}))
 
+	// Setup server with high difficulty to ensure timeout
+	difficulty := 5 // Very high difficulty - nearly impossible to solve quickly
+	powService := pow.NewSHA256HashcashService(difficulty, 5*time.Minute)
+	quotesService := quotes.NewInMemoryService()
+
+	serverConfig := server.Config{
+		Host:            "127.0.0.1",
+		Port:            "18091", // Different port from main test
+		ReadTimeout:     10 * time.Second,
+		WriteTimeout:    10 * time.Second,
+		MaxConnections:  10,
+		ShutdownTimeout: 5 * time.Second,
+	}
+
+	srv := server.NewServer(serverConfig, powService, quotesService, logger)
+
+	// Start server
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	serverReady := make(chan struct{})
+	go func() {
+		close(serverReady)
+		srv.ListenAndServe(ctx)
+	}()
+
+	<-serverReady
+	time.Sleep(100 * time.Millisecond) // Give server time to bind
+
 	// Setup client with very short timeout
 	clientPowService := pow.NewSHA256HashcashService(0, 0)
 	clientConfig := client.Config{
 		ServerHost:     "127.0.0.1",
-		ServerPort:     "18090", // Using same server from previous test
+		ServerPort:     "18091",
 		ConnectTimeout: 5 * time.Second,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
-		SolveTimeout:   1 * time.Millisecond, // Impossible to solve in time
+		SolveTimeout:   100 * time.Millisecond, // Too short to solve difficulty 5
 	}
 
 	c := client.NewClient(clientConfig, clientPowService, logger)
 
-	// This should timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+	// This should timeout while solving the challenge
+	requestCtx, requestCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer requestCancel()
 
-	_, err := c.RequestQuote(ctx)
+	_, err := c.RequestQuote(requestCtx)
 	if err == nil {
 		t.Error("Expected timeout error, got nil")
 	}
@@ -249,4 +278,8 @@ func TestE2E_Timeout(t *testing.T) {
 	if err != nil {
 		t.Logf("Client correctly returned timeout error: %v", err)
 	}
+
+	// Cleanup
+	cancel()
+	time.Sleep(100 * time.Millisecond)
 }

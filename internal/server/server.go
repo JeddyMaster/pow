@@ -162,6 +162,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 	if err := protocol.WriteMessage(conn, challengeMsg, s.config.WriteTimeout); err != nil {
 		s.logger.Error("Failed to send challenge", "error", err, "remote_addr", remoteAddr)
+		s.powService.InvalidateChallenge(challenge)
 		return
 	}
 
@@ -171,6 +172,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 	var proofMsg protocol.ProofMessage
 	if err := protocol.ReadMessage(conn, &proofMsg, s.config.ReadTimeout); err != nil {
 		s.logger.Error("Failed to read proof", "error", err, "remote_addr", remoteAddr)
+		s.powService.InvalidateChallenge(challenge)
 		s.sendError(conn, "Failed to read proof")
 		return
 	}
@@ -182,6 +184,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 			"remote_addr", remoteAddr,
 			"expected", challenge,
 			"received", proofMsg.Challenge)
+		s.powService.InvalidateChallenge(challenge)
 		s.sendError(conn, "Challenge mismatch")
 		return
 	}

@@ -283,7 +283,9 @@ func BenchmarkVerifyProof(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// Re-add challenge for each iteration
-		service.activeChallenges.Store(challenge, time.Now())
+		service.mu.Lock()
+		service.activeChallenges[challenge] = time.Now()
+		service.mu.Unlock()
 		_, err := service.VerifyProof(challenge, nonce)
 		if err != nil {
 			b.Fatalf("VerifyProof failed: %v", err)
