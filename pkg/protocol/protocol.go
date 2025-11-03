@@ -9,8 +9,12 @@ import (
 	"time"
 )
 
-// MaxMessageSize defines the maximum size of a message
-const MaxMessageSize = 1 << 16 // 64KB
+const (
+	// MaxMessageSize defines the maximum size of a message (64KB)
+	MaxMessageSize = 1 << 16
+	// MessageLengthPrefixSize is the size of the length prefix in bytes
+	MessageLengthPrefixSize = 4
+)
 
 // MessageType defines the type of message
 type MessageType string
@@ -65,7 +69,7 @@ func WriteMessage(conn net.Conn, msg interface{}, timeout time.Duration) error {
 	}
 
 	length := uint32(len(jsonData))
-	lenBuf := make([]byte, 4)
+	lenBuf := make([]byte, MessageLengthPrefixSize)
 	binary.LittleEndian.PutUint32(lenBuf, length)
 
 	// Set write deadline
@@ -104,7 +108,7 @@ func writeAll(conn net.Conn, data []byte) error {
 
 // ReadMessage reads a message from net.Conn with length prefix
 func ReadMessage(conn net.Conn, target interface{}, timeout time.Duration) error {
-	lenBuf := make([]byte, 4)
+	lenBuf := make([]byte, MessageLengthPrefixSize)
 
 	// Set read deadline
 	if timeout > 0 {

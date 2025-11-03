@@ -11,6 +11,13 @@ import (
 	"time"
 )
 
+const (
+	// DefaultMaxActiveChallenges is the default limit for active challenges
+	DefaultMaxActiveChallenges = 100000
+	// ChallengeRandomBytesSize is the size of random bytes in challenge
+	ChallengeRandomBytesSize = 16
+)
+
 // Service defines the interface for PoW operations
 type Service interface {
 	GenerateChallenge() (string, error)
@@ -31,7 +38,7 @@ type SHA256HashcashService struct {
 
 // NewSHA256HashcashService creates a new PoW service
 func NewSHA256HashcashService(difficulty int, challengeTTL time.Duration) *SHA256HashcashService {
-	return NewSHA256HashcashServiceWithLimit(difficulty, challengeTTL, 100000)
+	return NewSHA256HashcashServiceWithLimit(difficulty, challengeTTL, DefaultMaxActiveChallenges)
 }
 
 // NewSHA256HashcashServiceWithLimit creates a new PoW service with custom max challenges limit
@@ -55,7 +62,7 @@ func NewSHA256HashcashServiceWithLimit(difficulty int, challengeTTL time.Duratio
 // GenerateChallenge generates a new unique challenge
 func (s *SHA256HashcashService) GenerateChallenge() (string, error) {
 	// Generate random bytes
-	randomBytes := make([]byte, 16)
+	randomBytes := make([]byte, ChallengeRandomBytesSize)
 	if _, err := rand.Read(randomBytes); err != nil {
 		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}
