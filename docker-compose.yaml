@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: pow-server
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - POW_DIFFICULTY=2
+      - CHALLENGE_TTL=5m
+      - READ_TIMEOUT=30s
+      - WRITE_TIMEOUT=10s
+      - MAX_CONNECTIONS=100
+      - SHUTDOWN_TIMEOUT=30s
+    restart: unless-stopped
+    networks:
+      - pow-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client
+    container_name: pow-client
+    depends_on:
+      - server
+    environment:
+      - SERVER_HOST=server
+      - SERVER_PORT=8080
+      - CONNECT_TIMEOUT=10s
+      - READ_TIMEOUT=30s
+      - WRITE_TIMEOUT=10s
+      - SOLVE_TIMEOUT=5m
+    networks:
+      - pow-network
+    # Client runs once and exits
+    restart: "no"
+
+networks:
+  pow-network:
+    driver: bridge
