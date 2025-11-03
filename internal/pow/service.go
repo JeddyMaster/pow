@@ -21,17 +21,26 @@ type Service interface {
 
 // SHA256HashcashService implements PoW using SHA256 Hashcash algorithm
 type SHA256HashcashService struct {
-	difficulty       int
-	challengeTTL     time.Duration
-	activeChallenges sync.Map // map[challenge]timestamp for replay attack prevention
-	mu               sync.Mutex
+	difficulty          int
+	challengeTTL        time.Duration
+	maxActiveChallenges int
+	activeChallenges    sync.Map // map[challenge]timestamp for replay attack prevention
+	challengeCount      int      // Track number of active challenges
+	mu                  sync.Mutex
 }
 
 // NewSHA256HashcashService creates a new PoW service
 func NewSHA256HashcashService(difficulty int, challengeTTL time.Duration) *SHA256HashcashService {
+	return NewSHA256HashcashServiceWithLimit(difficulty, challengeTTL, 100000)
+}
+
+// NewSHA256HashcashServiceWithLimit creates a new PoW service with custom max challenges limit
+func NewSHA256HashcashServiceWithLimit(difficulty int, challengeTTL time.Duration, maxActiveChallenges int) *SHA256HashcashService {
 	s := &SHA256HashcashService{
-		difficulty:   difficulty,
-		challengeTTL: challengeTTL,
+		difficulty:          difficulty,
+		challengeTTL:        challengeTTL,
+		maxActiveChallenges: maxActiveChallenges,
+		challengeCount:      0,
 	}
 
 	// Start cleanup goroutine for expired challenges only if TTL is positive
@@ -45,9 +54,21 @@ func NewSHA256HashcashService(difficulty int, challengeTTL time.Duration) *SHA25
 
 // GenerateChallenge generates a new unique challenge
 func (s *SHA256HashcashService) GenerateChallenge() (string, error) {
+	// Check if we've reached the limit of active challenges
+	s.mu.Lock()
+	if s.maxActiveChallenges > 0 && s.challengeCount >= s.maxActiveChallenges {
+		s.mu.Unlock()
+		return "", fmt.Errorf("maximum active challenges limit reached (%d)", s.maxActiveChallenges)
+	}
+	s.challengeCount++
+	s.mu.Unlock()
+
 	// Generate random bytes
 	randomBytes := make([]byte, 16)
 	if _, err := rand.Read(randomBytes); err != nil {
+		s.mu.Lock()
+		s.challengeCount--
+		s.mu.Unlock()
 		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}
 
@@ -77,6 +98,7 @@ func (s *SHA256HashcashService) VerifyProof(challenge, nonce string) (bool, erro
 	// Check if challenge is expired
 	if time.Since(timestamp) > s.challengeTTL {
 		s.activeChallenges.Delete(challenge)
+		s.decrementChallengeCount()
 		return false, fmt.Errorf("challenge expired")
 	}
 
@@ -86,13 +108,26 @@ func (s *SHA256HashcashService) VerifyProof(challenge, nonce string) (bool, erro
 
 	// Check if hash has required number of leading zeros
 	if !s.hasLeadingZeros(hash[:], s.difficulty) {
+		// SECURITY: Remove invalid proof attempt to prevent memory exhaustion
+		s.activeChallenges.Delete(challenge)
+		s.decrementChallengeCount()
 		return false, nil
 	}
 
 	// Remove challenge to prevent replay attacks
 	s.activeChallenges.Delete(challenge)
+	s.decrementChallengeCount()
 
 	return true, nil
+}
+
+// decrementChallengeCount safely decrements the challenge counter
+func (s *SHA256HashcashService) decrementChallengeCount() {
+	s.mu.Lock()
+	if s.challengeCount > 0 {
+		s.challengeCount--
+	}
+	s.mu.Unlock()
 }
 
 // SolveChallenge finds a nonce that solves the challenge
@@ -144,18 +179,32 @@ func (s *SHA256HashcashService) cleanupExpiredChallenges() {
 
 	for range ticker.C {
 		now := time.Now()
+		deletedCount := 0
+
 		s.activeChallenges.Range(func(key, value interface{}) bool {
 			timestamp, ok := value.(time.Time)
 			if !ok {
 				s.activeChallenges.Delete(key)
+				deletedCount++
 				return true
 			}
 
 			if now.Sub(timestamp) > s.challengeTTL {
 				s.activeChallenges.Delete(key)
+				deletedCount++
 			}
 
 			return true
 		})
+
+		// Update challenge count
+		if deletedCount > 0 {
+			s.mu.Lock()
+			s.challengeCount -= deletedCount
+			if s.challengeCount < 0 {
+				s.challengeCount = 0
+			}
+			s.mu.Unlock()
+		}
 	}
 }

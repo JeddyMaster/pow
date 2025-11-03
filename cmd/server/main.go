@@ -28,14 +28,22 @@ func main() {
 
 	// Load configuration
 	cfg := config.LoadServerConfig()
+
+	// Validate configuration
+	if err := cfg.Validate(); err != nil {
+		logger.Error("Invalid configuration", "error", err)
+		log.Fatalf("Configuration validation failed: %v", err)
+	}
+
 	logger.Info("Configuration loaded",
 		"host", cfg.Host,
 		"port", cfg.Port,
 		"difficulty", cfg.Difficulty,
-		"max_connections", cfg.MaxConnections)
+		"max_connections", cfg.MaxConnections,
+		"max_active_challenges", cfg.MaxActiveChallenges)
 
 	// Initialize services
-	powService := pow.NewSHA256HashcashService(cfg.Difficulty, cfg.ChallengeTTL)
+	powService := pow.NewSHA256HashcashServiceWithLimit(cfg.Difficulty, cfg.ChallengeTTL, cfg.MaxActiveChallenges)
 	quotesService := quotes.NewInMemoryService()
 
 	// Create server
