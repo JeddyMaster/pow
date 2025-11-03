@@ -24,12 +24,12 @@ type Config struct {
 // Client represents the TCP client
 type Client struct {
 	config     Config
-	powService pow.Service
+	powService pow.SolverService // Client only needs solver operations
 	logger     *slog.Logger
 }
 
 // NewClient creates a new TCP client instance
-func NewClient(config Config, powService pow.Service, logger *slog.Logger) *Client {
+func NewClient(config Config, powService pow.SolverService, logger *slog.Logger) *Client {
 	return &Client{
 		config:     config,
 		powService: powService,

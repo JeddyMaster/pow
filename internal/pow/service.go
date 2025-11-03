@@ -18,13 +18,26 @@ const (
 	ChallengeRandomBytesSize = 16
 )
 
-// Service defines the interface for PoW operations
-type Service interface {
+// ChallengeService defines the interface for server-side PoW operations
+// (challenge generation and verification)
+type ChallengeService interface {
 	GenerateChallenge() (string, error)
 	VerifyProof(challenge, nonce string) (bool, error)
 	InvalidateChallenge(challenge string)
-	SolveChallenge(ctx context.Context, challenge string, difficulty int) (string, error)
 	GetDifficulty() int
+}
+
+// SolverService defines the interface for client-side PoW operations
+// (challenge solving)
+type SolverService interface {
+	SolveChallenge(ctx context.Context, challenge string, difficulty int) (string, error)
+}
+
+// Service combines both ChallengeService and SolverService
+// SHA256HashcashService implements this full interface
+type Service interface {
+	ChallengeService
+	SolverService
 }
 
 // SHA256HashcashService implements PoW using SHA256 Hashcash algorithm

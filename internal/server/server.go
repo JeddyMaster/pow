@@ -27,7 +27,7 @@ type Config struct {
 // Server represents the TCP server
 type Server struct {
 	config        Config
-	powService    pow.Service
+	powService    pow.ChallengeService // Server only needs challenge operations
 	quotesService quotes.Service
 	logger        *slog.Logger
 	listener      net.Listener
@@ -38,7 +38,7 @@ type Server struct {
 }
 
 // NewServer creates a new TCP server instance
-func NewServer(config Config, powService pow.Service, quotesService quotes.Service, logger *slog.Logger) *Server {
+func NewServer(config Config, powService pow.ChallengeService, quotesService quotes.Service, logger *slog.Logger) *Server {
 	return &Server{
 		config:        config,
 		powService:    powService,
