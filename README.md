@@ -292,3 +292,7 @@ telnet localhost 8080
 - Increase `MAX_CONNECTIONS`
 - Increase `POW_DIFFICULTY` to slow down attackers
 - Monitor active connections and adjust
+
+## License
+
+MIT License - feel free to use this in your projects!
