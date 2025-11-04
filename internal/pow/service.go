@@ -143,14 +143,14 @@ func (s *SHA256HashcashService) InvalidateChallenge(challenge string) {
 
 // SolveChallenge finds a nonce that solves the challenge
 func (s *SHA256HashcashService) SolveChallenge(ctx context.Context, challenge string, difficulty int) (string, error) {
-	nonce := 0
+	var nonce uint64
 
 	for {
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
 		default:
-			nonceStr := strconv.Itoa(nonce)
+			nonceStr := strconv.FormatUint(nonce, 10)
 			data := challenge + nonceStr
 			hash := sha256.Sum256([]byte(data))
 
