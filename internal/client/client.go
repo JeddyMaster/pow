@@ -2,6 +2,8 @@ package client
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -70,6 +72,16 @@ func (c *Client) RequestQuote(ctx context.Context) (string, error) {
 
 	nonce, err := c.powService.SolveChallenge(solveCtx, challengeMsg.Challenge, challengeMsg.Difficulty)
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			c.logger.Warn("PoW solving timeout",
+				"difficulty", challengeMsg.Difficulty,
+				"timeout", c.config.SolveTimeout,
+				"elapsed", time.Since(startTime))
+		} else if errors.Is(err, context.Canceled) {
+			c.logger.Info("PoW solving canceled")
+		} else {
+			c.logger.Error("PoW solving failed", "error", err)
+		}
 		return "", fmt.Errorf("failed to solve challenge: %w", err)
 	}
 
@@ -92,35 +104,36 @@ func (c *Client) RequestQuote(ctx context.Context) (string, error) {
 	c.logger.Info("Proof sent to server")
 
 	// Read response from server (quote or error)
-	// First, read into a generic map to check message type
-	var response map[string]interface{}
-	if err := protocol.ReadMessage(conn, &response, c.config.ReadTimeout); err != nil {
+	// Read into json.RawMessage to allow re-parsing
+	var rawResponse json.RawMessage
+	if err := protocol.ReadMessage(conn, &rawResponse, c.config.ReadTimeout); err != nil {
 		return "", fmt.Errorf("failed to read response: %w", err)
 	}
 
-	// Check message type
-	msgType, ok := response["type"].(string)
-	if !ok {
-		return "", fmt.Errorf("invalid response: missing or invalid 'type' field")
+	// Parse base message to determine type
+	var baseMsg protocol.BaseMessage
+	if err := json.Unmarshal(rawResponse, &baseMsg); err != nil {
+		return "", fmt.Errorf("failed to parse response type: %w", err)
 	}
 
-	switch protocol.MessageType(msgType) {
+	// Parse into specific message type based on type field
+	switch baseMsg.Type {
 	case protocol.MsgTypeQuote:
-		quote, ok := response["quote"].(string)
-		if !ok {
-			return "", fmt.Errorf("invalid quote response: missing or invalid 'quote' field")
+		var quoteMsg protocol.QuoteMessage
+		if err := json.Unmarshal(rawResponse, &quoteMsg); err != nil {
+			return "", fmt.Errorf("failed to parse quote message: %w", err)
 		}
 		c.logger.Info("Quote received successfully")
-		return quote, nil
+		return quoteMsg.Quote, nil
 
 	case protocol.MsgTypeError:
-		errMsg, ok := response["message"].(string)
-		if !ok {
-			return "", fmt.Errorf("server returned error without message")
+		var errMsg protocol.ErrorMessage
+		if err := json.Unmarshal(rawResponse, &errMsg); err != nil {
+			return "", fmt.Errorf("failed to parse error message: %w", err)
 		}
-		return "", fmt.Errorf("server error: %s", errMsg)
+		return "", fmt.Errorf("server error: %s", errMsg.Message)
 
 	default:
-		return "", fmt.Errorf("unexpected message type: %s", msgType)
+		return "", fmt.Errorf("unexpected message type: %s", baseMsg.Type)
 	}
 }
